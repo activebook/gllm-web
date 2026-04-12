@@ -178,20 +178,62 @@ export class ChatRenderer {
       this.initAssistantMessage();
     }
     
-    const badge = document.createElement('div');
-    badge.className = 'tool-badge';
+    // Extract purpose if it exists
+    let purpose = '';
+    const argsClone = { ...args };
+    if (argsClone && typeof argsClone === 'object') {
+      if (argsClone.purpose) {
+        purpose = String(argsClone.purpose);
+        delete argsClone.purpose; // Remove from the rest of the parameters
+      } else {
+        const keys = Object.keys(argsClone);
+        // If there is exactly one parameter and it's a primitive, treat it as the purpose
+        if (keys.length === 1 && typeof argsClone[keys[0]] !== 'object') {
+          purpose = String(argsClone[keys[0]]);
+          delete argsClone[keys[0]];
+        }
+      }
+    }
     
-    const sfArgs = JSON.stringify(args).substring(0, 40) + (JSON.stringify(args).length > 40 ? '...' : '');
+    const block = document.createElement('div');
+    block.className = 'tool-block';
     
-    badge.innerHTML = `
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="3"></circle>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
-      </svg>
-      <span>${functionName}(${sfArgs})</span>
+    const header = document.createElement('div');
+    header.className = 'tool-header';
+    
+    const titleHtml = `
+      <div class="tool-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>${functionName}</span>
+      </div>
     `;
+
+    const purposeHtml = purpose ? `<div class="tool-purpose">${this.escapeHtml(purpose)}</div>` : '';
+    header.innerHTML = titleHtml + purposeHtml;
     
-    this.currentMsgEl!.insertBefore(badge, this.currentContentEl);
+    header.onclick = () => {
+      block.classList.toggle('open');
+    };
+    
+    const content = document.createElement('div');
+    content.className = 'tool-content';
+    
+    const hasParams = Object.keys(argsClone).length > 0;
+    if (hasParams) {
+      content.textContent = JSON.stringify(argsClone, null, 2);
+    } else {
+      content.textContent = 'No additional parameters.';
+      content.style.fontStyle = 'italic';
+      content.style.opacity = '0.7';
+    }
+    
+    block.appendChild(header);
+    block.appendChild(content);
+    
+    this.currentMsgEl!.insertBefore(block, this.currentContentEl);
     this.scrollToBottom();
   }
 
