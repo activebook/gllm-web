@@ -4,6 +4,8 @@ export class ChatRenderer {
   private currentContentEl: HTMLElement | null = null;
   private currentReasoningEl: HTMLElement | null = null;
   private currentReasoningContentEl: HTMLElement | null = null;
+  private currentSystemMsgEl: HTMLElement | null = null;
+  private currentSystemMsgContent: string = '';
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -43,10 +45,42 @@ export class ChatRenderer {
 
   public addSystemMessage(text: string) {
     this.removeLoadingBubble();
-    const msg = document.createElement('div');
-    msg.className = 'message system';
-    msg.innerHTML = `<div class="content">${this.renderMarkdown(text)}</div>`;
-    this.container.appendChild(msg);
+    
+    if (!this.currentSystemMsgEl) {
+      this.currentSystemMsgContent = '';
+      
+      const systemBlock = document.createElement('div');
+      systemBlock.className = 'message system command-block open';
+      this.currentSystemMsgEl = systemBlock;
+      
+      const header = document.createElement('div');
+      header.className = 'command-header';
+      header.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line>
+        </svg>
+        <span>Command Execution / Feedback</span>
+      `;
+      
+      header.onclick = () => {
+        systemBlock.classList.toggle('open');
+      };
+      
+      const content = document.createElement('div');
+      content.className = 'command-content';
+      
+      systemBlock.appendChild(header);
+      systemBlock.appendChild(content);
+      
+      this.container.appendChild(systemBlock);
+    }
+    
+    this.currentSystemMsgContent += text;
+    
+    // We optionally treat terminal output as markdown code block if not already properly formatted, 
+    // but renderMarkdown handles it if properly wrapped. We'll dump it raw mapped or let renderMarkdown process.
+    const contentBox = this.currentSystemMsgEl.querySelector('.command-content')!;
+    contentBox.innerHTML = this.renderMarkdown(this.currentSystemMsgContent);
     this.scrollToBottom();
   }
 
@@ -240,6 +274,8 @@ export class ChatRenderer {
   public terminateCurrentMessage() {
     this.currentMsgEl = null;
     this.currentContentEl = null;
+    this.currentSystemMsgEl = null;
+    this.currentSystemMsgContent = '';
     this.closeReasoning(); // Just in case
   }
 }

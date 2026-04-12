@@ -162,7 +162,8 @@ h1 {
 }
 
 .message.system {
-  align-self: center;
+  align-self: stretch;
+  width: 100%;
   max-width: 100%;
 }
 
@@ -185,14 +186,64 @@ h1 {
   padding: var(--spacing-md) 0; /* Agents don't have bubble background */
 }
 
-.message.system .content {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  background: var(--bg-surface);
-  border: 1px dashed var(--border-color);
+/* System content overrides removed as we use command-content directly now */
+
+/* Command Blocks — grid-row fold pattern */
+.command-block {
+  margin-bottom: var(--spacing-md);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  margin-top: var(--spacing-xs);
+  background: var(--bg-surface);
+  display: grid;
+  grid-template-rows: auto 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+
+.command-block.open {
+  grid-template-rows: auto 1fr;
+}
+
+.command-header {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-surface-elevated);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  border-bottom: 1px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+}
+
+.command-header svg {
+  width: 14px;
+  height: 14px;
+}
+
+.command-block.open .command-header {
+  border-bottom-color: var(--border-color);
+  color: var(--text-primary);
+}
+
+.command-block.open .command-header svg {
+  color: var(--accent-primary);
+}
+
+.command-content {
+  overflow: hidden;
+  min-height: 0;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+  border-left: 2px solid var(--accent-secondary);
+}
+
+.command-block.open .command-content {
+  padding: var(--spacing-md);
 }
 
 .message.error {
@@ -271,13 +322,19 @@ h1 {
 }
 
 /* Reasoning Blocks */
+/* Reasoning Blocks — grid-row fold pattern */
 .reasoning-block {
   margin-bottom: var(--spacing-md);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  overflow: hidden;
   background: var(--bg-surface);
-  transition: all 0.3s ease;
+  display: grid;
+  grid-template-rows: auto 0fr;
+  transition: grid-template-rows 0.3s ease;
+}
+
+.reasoning-block.open {
+  grid-template-rows: auto 1fr;
 }
 
 .reasoning-header {
@@ -292,6 +349,7 @@ h1 {
   font-weight: 500;
   color: var(--text-secondary);
   border-bottom: 1px solid transparent;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
 }
 
 .reasoning-block.open .reasoning-header {
@@ -300,20 +358,17 @@ h1 {
 }
 
 .reasoning-content {
-  padding: 0;
-  max-height: 0;
   overflow: hidden;
+  min-height: 0;
   color: var(--text-secondary);
   font-size: 0.85rem;
   font-family: var(--font-mono);
   white-space: pre-wrap;
   border-left: 2px solid var(--accent-secondary);
-  transition: max-height 0.4s ease, padding 0.4s ease;
 }
 
 .reasoning-block.open .reasoning-content {
   padding: var(--spacing-md);
-  max-height: 2000px; /* Arbitrary large number for CSS transition */
 }
 
 /* Input Area Footer */
