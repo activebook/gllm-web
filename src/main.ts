@@ -11,8 +11,10 @@ const sendBtn = document.getElementById('send-btn') as HTMLButtonElement;
 const statusDot = document.querySelector('.dot') as HTMLElement;
 const statusText = document.getElementById('connection-status') as HTMLElement;
 const toolToast = document.getElementById('tool-status-toast') as HTMLElement;
-const toolStatusText = document.getElementById('tool-status-text') as HTMLElement;
+const toolStatusText = document.getElementById('tool-status-text')!;
+
 let isStreaming = false;
+let currentAbortController: AbortController | null = null;
 let currentSession = 'testbed-session';
 
 // Auto-resize textarea
@@ -57,8 +59,9 @@ function setStatus(statusType: string) {
 function lockInput() {
   isStreaming = true;
   input.disabled = true;
-  sendBtn.disabled = true;
-  sendBtn.innerHTML = `<div class="btn-spinner"></div>`;
+  sendBtn.disabled = false;
+  sendBtn.classList.add('stop-btn');
+  sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10"></rect></svg>`;
   statusDot.classList.add('active');
   chatRenderer.showLoadingBubble();
 }
@@ -67,11 +70,13 @@ function unlockInput() {
   isStreaming = false;
   input.disabled = false;
   sendBtn.disabled = false;
+  sendBtn.classList.remove('stop-btn');
   sendBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>`;
   input.focus();
   statusDot.className = 'dot';
   statusText.textContent = 'Ready';
   toolToast.classList.add('hidden');
+  currentAbortController = null;
   
   chatRenderer.removeLoadingBubble();
   // Terminate current active message bounds
@@ -80,8 +85,16 @@ function unlockInput() {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  
+  if (isStreaming) {
+    if (currentAbortController) {
+      currentAbortController.abort();
+    }
+    return;
+  }
+  
   const text = input.value.trim();
-  if (!text || isStreaming) return;
+  if (!text) return;
 
   // Add user message to UI
   chatRenderer.addUserMessage(text);
@@ -91,9 +104,12 @@ form.addEventListener('submit', async (e) => {
   input.style.height = '';
   lockInput();
 
+  currentAbortController = new AbortController();
+
   await fetchSSECompletion({
     messages: [{ role: 'user', content: text }],
     session: currentSession,
+    abortSignal: currentAbortController.signal,
     
     onStatus: (status) => {
       setStatus(status);

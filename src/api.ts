@@ -13,6 +13,7 @@ export interface FetchCompletionParams {
   onCommand?: (output: string, error?: string) => void;
   onError?: (message: string, code: string) => void;
   onDone?: () => void;
+  abortSignal?: AbortSignal;
 }
 
 export async function fetchSSECompletion(params: FetchCompletionParams) {
@@ -21,6 +22,7 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
   try {
     const response = await fetch(url, {
       method: 'POST',
+      signal: params.abortSignal,
       headers: {
         'Content-Type': 'application/json',
       },
@@ -101,6 +103,11 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
     params.onDone?.(); // Call done if stream ends without [DONE] 
 
   } catch (err: any) {
+    if (err.name === 'AbortError') {
+      console.log('Stream aborted by user');
+      params.onDone?.();
+      return;
+    }
     params.onError?.(err.message, 'client_error');
     params.onDone?.();
   }

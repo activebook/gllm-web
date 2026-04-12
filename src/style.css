@@ -390,6 +390,22 @@ h1 {
   transform: none;
 }
 
+.chat-input button.stop-btn {
+  color: hsla(0, 80%, 70%, 1); /* Soft red for stop */
+  border-color: hsla(0, 80%, 70%, 0.3);
+  background: hsla(0, 80%, 30%, 0.1);
+  box-shadow: 0 4px 15px hsla(0, 80%, 60%, 0.2);
+}
+
+.chat-input button.stop-btn rect {
+  fill: currentColor;
+}
+
+.chat-input button.stop-btn:hover {
+  background: hsla(0, 80%, 30%, 0.2);
+  border-color: hsla(0, 80%, 70%, 0.5);
+}
+
 #send-btn svg {
   width: 18px;
   height: 18px;
