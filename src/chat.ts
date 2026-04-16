@@ -1,3 +1,6 @@
+import { createPatch } from 'diff';
+import { html as d2h } from 'diff2html';
+
 export class ChatRenderer {
   private container: HTMLElement;
   private currentMsgEl: HTMLElement | null = null;
@@ -36,6 +39,7 @@ export class ChatRenderer {
   }
 
   public addUserMessage(content: string) {
+    this.terminateCurrentMessage();
     const msg = document.createElement('div');
     msg.className = 'message user';
     msg.innerHTML = `<div class="content">${this.escapeHtml(content)}</div>`;
@@ -258,10 +262,6 @@ export class ChatRenderer {
     const hasParams = Object.keys(argsClone).length > 0;
     if (hasParams) {
       content.textContent = JSON.stringify(argsClone, null, 2);
-    } else {
-      content.textContent = 'No additional parameters.';
-      content.style.fontStyle = 'italic';
-      content.style.opacity = '0.7';
     }
     
     block.appendChild(header);
@@ -277,5 +277,179 @@ export class ChatRenderer {
     this.currentSystemMsgEl = null;
     this.currentSystemMsgContent = '';
     this.closeReasoning(); // Just in case
+  }
+
+  // Renders an inline confirmation card (tool_confirm) appended to the chat container.
+  // diff is optional — if present, it is rendered as a side-by-side diff2html block.
+  public addConfirmCard(
+    purpose: string,
+    diff: { before: string; after: string } | null,
+    onChoice: (choice: 'once' | 'always' | 'cancel') => Promise<void>
+  ) {
+    this.removeLoadingBubble();
+
+    const card = document.createElement('div');
+    card.className = 'interaction-card confirm-card';
+
+    // Purpose row
+    const purposeEl = document.createElement('div');
+    purposeEl.className = 'interaction-card-purpose';
+    purposeEl.textContent = purpose;
+    card.appendChild(purposeEl);
+
+    // Action buttons
+    const buttonsEl = document.createElement('div');
+    buttonsEl.className = 'interaction-card-actions';
+
+    // Optional diff viewer
+    if (diff) {
+      const patch = createPatch('changes', diff.before, diff.after, '', '', { context: 3 });
+      const diffHtml = d2h(patch, {
+        drawFileList: false,
+        matching: 'lines',
+        outputFormat: 'side-by-side',
+        renderNothingWhenEmpty: false
+      });
+      const diffEl = document.createElement('div');
+      diffEl.className = 'interaction-card-diff';
+      diffEl.innerHTML = diffHtml;
+      card.insertBefore(diffEl, buttonsEl);
+      this.scrollToBottom();
+    }
+
+    let parentToolBlock: Element | null = null;
+
+    const disable = (statusText: string) => {
+      buttonsEl.querySelectorAll('button').forEach(b => { (b as HTMLButtonElement).disabled = true; });
+      card.classList.add('resolved');
+      
+      const label = document.createElement('div');
+      label.className = 'interaction-card-actions';
+      label.style.fontStyle = 'italic';
+      label.style.color = 'var(--text-secondary)';
+      label.style.fontSize = '0.9rem';
+      label.textContent = `Result: ${statusText}`;
+      card.appendChild(label);
+
+      // Auto fold the tool block upon resolution
+      if (parentToolBlock) {
+        parentToolBlock.classList.remove('open');
+      }
+    };
+
+    const denyBtn = document.createElement('button');
+    denyBtn.className = 'interaction-btn danger';
+    denyBtn.textContent = 'Deny';
+    denyBtn.onclick = async () => { disable('Denied'); await onChoice('cancel'); };
+
+    const onceBtn = document.createElement('button');
+    onceBtn.className = 'interaction-btn secondary';
+    onceBtn.textContent = 'Allow Once';
+    onceBtn.onclick = async () => { disable('Allowed once'); await onChoice('once'); };
+
+    const alwaysBtn = document.createElement('button');
+    alwaysBtn.className = 'interaction-btn primary';
+    alwaysBtn.textContent = 'Allow this session';
+    alwaysBtn.onclick = async () => { disable('Allowed exactly this session'); await onChoice('always'); };
+
+    buttonsEl.appendChild(denyBtn);
+    buttonsEl.appendChild(onceBtn);
+    buttonsEl.appendChild(alwaysBtn);
+    card.appendChild(buttonsEl);
+
+    if (this.currentMsgEl) {
+      const toolBlocks = this.currentMsgEl.querySelectorAll('.tool-block');
+      if (toolBlocks.length > 0) {
+        const lastToolBlock = toolBlocks[toolBlocks.length - 1];
+        parentToolBlock = lastToolBlock;
+        const contentDiv = lastToolBlock.querySelector('.tool-content');
+        if (contentDiv) {
+          contentDiv.appendChild(card);
+          lastToolBlock.classList.add('open');
+          this.scrollToBottom();
+          return;
+        }
+      }
+    }
+    
+    this.container.appendChild(card);
+    this.scrollToBottom();
+  }
+
+  // Renders an inline ask-user card appended to the chat container.
+  public addAskUserCard(
+    question: string,
+    onSubmit: (answer: string, cancelled: boolean) => Promise<void>
+  ) {
+    this.removeLoadingBubble();
+
+    const card = document.createElement('div');
+    card.className = 'interaction-card ask-card';
+
+    const questionEl = document.createElement('div');
+    questionEl.className = 'interaction-card-purpose';
+    questionEl.textContent = question;
+    card.appendChild(questionEl);
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'interaction-card-input';
+    textarea.placeholder = 'Type your answer…';
+    textarea.rows = 3;
+    card.appendChild(textarea);
+
+    const actions = document.createElement('div');
+    actions.className = 'interaction-card-actions';
+
+    let parentToolBlock: Element | null = null;
+    
+    const disable = (isCancel: boolean) => {
+      const val = textarea.value.trim();
+      if (!isCancel && val) {
+        this.addUserMessage(val);
+      } else if (isCancel) {
+        this.addUserMessage("[User canceled input]");
+      }
+      
+      card.remove();
+
+      // Auto fold the tool block upon resolution
+      if (parentToolBlock) {
+        parentToolBlock.classList.remove('open');
+      }
+    };
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'interaction-btn secondary';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.onclick = async () => { disable(true); await onSubmit('', true); };
+
+    const submitBtn = document.createElement('button');
+    submitBtn.className = 'interaction-btn primary';
+    submitBtn.textContent = 'Submit';
+    submitBtn.onclick = async () => { disable(false); await onSubmit(textarea.value, false); };
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(submitBtn);
+    card.appendChild(actions);
+
+    if (this.currentMsgEl) {
+      const toolBlocks = this.currentMsgEl.querySelectorAll('.tool-block');
+      if (toolBlocks.length > 0) {
+        const lastToolBlock = toolBlocks[toolBlocks.length - 1];
+        parentToolBlock = lastToolBlock;
+        const contentDiv = lastToolBlock.querySelector('.tool-content');
+        if (contentDiv) {
+          contentDiv.appendChild(card);
+          lastToolBlock.classList.add('open');
+          textarea.focus();
+          this.scrollToBottom();
+          return;
+        }
+      }
+    }
+
+    this.container.appendChild(card);
+    textarea.focus();
+    this.scrollToBottom();
   }
 }

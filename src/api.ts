@@ -11,6 +11,8 @@ export interface FetchCompletionParams {
   onStatus?: (status: string) => void;
   onToolCall?: (functionName: string, args: any) => void;
   onCommand?: (output: string, error?: string) => void;
+  onRequest?: (id: string, kind: string, purpose: string, tool?: string) => void;
+  onDiff?: (before: string, after: string) => void;
   onError?: (message: string, code: string) => void;
   onDone?: () => void;
   abortSignal?: AbortSignal;
@@ -18,7 +20,7 @@ export interface FetchCompletionParams {
 
 export async function fetchSSECompletion(params: FetchCompletionParams) {
   const url = 'http://localhost:8080/v1/chat/completions';
-  
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -51,16 +53,16 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
       if (done) break;
 
       buffer += decoder.decode(value, { stream: true });
-      
+
       const lines = buffer.split('\n\n');
       // The last element is either an empty string (if ends with \n\n) or incomplete chunk
       buffer = lines.pop() || '';
 
       for (const line of lines) {
         if (!line.startsWith('data: ')) continue;
-        
+
         const dataStr = line.substring(6).trim(); // Remove "data: "
-        
+
         if (dataStr === '[DONE]') {
           params.onDone?.();
           return;
@@ -68,7 +70,7 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
 
         try {
           const packet = JSON.parse(dataStr);
-          
+
           if (packet.choices) {
             const delta = packet.choices[0].delta;
             if (delta.content && params.onTextChunk) {
@@ -89,6 +91,12 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
               case 'command':
                 params.onCommand?.(data.content, data.error);
                 break;
+              case 'request':
+                params.onRequest?.(data.id, data.type, data.purpose, data.tool);
+                break;
+              case 'diff':
+                params.onDiff?.(data.before, data.after);
+                break;
               case 'error':
                 params.onError?.(data.content, data.code);
                 break;
@@ -99,7 +107,7 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
         }
       }
     }
-    
+
     params.onDone?.(); // Call done if stream ends without [DONE] 
 
   } catch (err: any) {
@@ -110,5 +118,21 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
     }
     params.onError?.(err.message, 'client_error');
     params.onDone?.();
+  }
+}
+
+export async function resolveInteraction(id: string, kind: string, payload: any) {
+  const url = 'http://localhost:8080/v1/interact';
+  const body = { id, kind, ...payload };
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body)
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
   }
 }

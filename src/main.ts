@@ -1,5 +1,6 @@
 import './style.css';
-import { fetchSSECompletion } from './api';
+import 'diff2html/bundles/css/diff2html.min.css';
+import { fetchSSECompletion, resolveInteraction } from './api';
 import { ChatRenderer } from './chat';
 
 const chatRenderer = new ChatRenderer('chat-container');
@@ -16,6 +17,9 @@ const toolStatusText = document.getElementById('tool-status-text')!;
 let isStreaming = false;
 let currentAbortController: AbortController | null = null;
 let currentSession = 'testbed-session';
+
+let stashedDiff: { before: string, after: string } | null = null;
+
 
 // Auto-resize textarea
 input.addEventListener('input', () => {
@@ -77,7 +81,7 @@ function unlockInput() {
   statusText.textContent = 'Ready';
   toolToast.classList.add('hidden');
   currentAbortController = null;
-  
+
   chatRenderer.removeLoadingBubble();
   // Terminate current active message bounds
   chatRenderer.terminateCurrentMessage();
@@ -85,20 +89,20 @@ function unlockInput() {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
-  
+
   if (isStreaming) {
     if (currentAbortController) {
       currentAbortController.abort();
     }
     return;
   }
-  
+
   const text = input.value.trim();
   if (!text) return;
 
   // Add user message to UI
   chatRenderer.addUserMessage(text);
-  
+
   // Reset input UI
   input.value = '';
   input.style.height = '';
@@ -110,7 +114,7 @@ form.addEventListener('submit', async (e) => {
     messages: [{ role: 'user', content: text }],
     session: currentSession,
     abortSignal: currentAbortController.signal,
-    
+
     onStatus: (status) => {
       setStatus(status);
       if (status === 'start_reasoning') {
@@ -119,11 +123,11 @@ form.addEventListener('submit', async (e) => {
         chatRenderer.closeReasoning();
       }
     },
-    
+
     onTextChunk: (chunk) => {
       chatRenderer.appendTextChunk(chunk);
     },
-    
+
     onReasoningChunk: (chunk) => {
       chatRenderer.appendReasoningChunk(chunk);
     },
@@ -139,6 +143,25 @@ form.addEventListener('submit', async (e) => {
         chatRenderer.addErrorResponse(error);
       } else {
         chatRenderer.addSystemMessage(output);
+      }
+    },
+
+    onDiff: (before, after) => {
+      stashedDiff = { before, after };
+    },
+
+    onRequest: (id, type, purpose) => {
+      const diff = stashedDiff;
+      stashedDiff = null;
+
+      if (type === 'ask_user') {
+        chatRenderer.addAskUserCard(purpose, async (answer, cancelled) => {
+          await resolveInteraction(id, type, cancelled ? { cancelled: true } : { answer });
+        });
+      } else if (type === 'tool_confirm') {
+        chatRenderer.addConfirmCard(purpose, diff, async (choice) => {
+          await resolveInteraction(id, type, { approve: choice });
+        });
       }
     },
 

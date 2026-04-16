@@ -8,7 +8,12 @@
     "build": "tsc && vite build",
     "preview": "vite preview"
   },
+  "dependencies": {
+    "diff": "^5.2.0",
+    "diff2html": "^3.4.4"
+  },
   "devDependencies": {
+    "@types/diff": "^5.2.1",
     "typescript": "^5.2.2",
     "vite": "^5.2.0"
   }
