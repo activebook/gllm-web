@@ -320,7 +320,7 @@ export class ChatRenderer {
     let parentToolBlock: Element | null = null;
 
     const disable = (statusText: string) => {
-      buttonsEl.querySelectorAll('button').forEach(b => { (b as HTMLButtonElement).disabled = true; });
+      buttonsEl.remove();
       card.classList.add('resolved');
       
       const label = document.createElement('div');
