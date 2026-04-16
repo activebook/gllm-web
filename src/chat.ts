@@ -9,6 +9,9 @@ export class ChatRenderer {
   private currentReasoningContentEl: HTMLElement | null = null;
   private currentSystemMsgEl: HTMLElement | null = null;
   private currentSystemMsgContent: string = '';
+  
+  // Stashed diff for the next confirm request
+  private stashedDiff: { before: string; after: string } | null = null;
 
   constructor(containerId: string) {
     const el = document.getElementById(containerId);
@@ -211,27 +214,27 @@ export class ChatRenderer {
     }
   }
 
-  public addToolBadge(functionName: string, args: any) {
+  // Stash diff for the next confirm request
+  public stashDiff(before: string, after: string) {
+    this.stashedDiff = { before, after };
+  }
+
+  // Get the stashed diff (for debugging)
+  public getStashedDiff(): { before: string; after: string } | null {
+    return this.stashedDiff;
+  }
+
+  // Track the last tool block for proper ordering
+  private lastToolBlock: Element | null = null;
+
+  // Add a tool badge and return the tool block element
+  // Returns: the tool block element for tracking
+  public addToolBadge(functionName: string, description: string): HTMLElement | null {
     if (!this.currentMsgEl || this.currentMsgEl.classList.contains('loading-bubble')) {
       this.initAssistantMessage();
     }
     
-    // Extract purpose if it exists
-    let purpose = '';
-    const argsClone = { ...args };
-    if (argsClone && typeof argsClone === 'object') {
-      if (argsClone.purpose) {
-        purpose = String(argsClone.purpose);
-        delete argsClone.purpose; // Remove from the rest of the parameters
-      } else {
-        const keys = Object.keys(argsClone);
-        // If there is exactly one parameter and it's a primitive, treat it as the purpose
-        if (keys.length === 1 && typeof argsClone[keys[0]] !== 'object') {
-          purpose = String(argsClone[keys[0]]);
-          delete argsClone[keys[0]];
-        }
-      }
-    }
+    let purpose = description || '';
     
     const block = document.createElement('div');
     block.className = 'tool-block';
@@ -259,16 +262,22 @@ export class ChatRenderer {
     const content = document.createElement('div');
     content.className = 'tool-content';
     
-    const hasParams = Object.keys(argsClone).length > 0;
-    if (hasParams) {
-      content.textContent = JSON.stringify(argsClone, null, 2);
-    }
-    
     block.appendChild(header);
     block.appendChild(content);
     
-    this.currentMsgEl!.insertBefore(block, this.currentContentEl);
+    // Insert tool block after the last tool block to maintain streaming order
+    // If no lastToolBlock, insert before currentContentEl
+    if (this.lastToolBlock && this.lastToolBlock.parentNode === this.currentMsgEl) {
+      // Insert after the last tool block
+      this.currentMsgEl!.insertBefore(block, this.lastToolBlock.nextSibling);
+    } else {
+      // First tool or lastToolBlock was removed, insert before content
+      this.currentMsgEl!.insertBefore(block, this.currentContentEl);
+    }
+    this.lastToolBlock = block;
     this.scrollToBottom();
+    
+    return block;
   }
 
   public terminateCurrentMessage() {
@@ -276,53 +285,83 @@ export class ChatRenderer {
     this.currentContentEl = null;
     this.currentSystemMsgEl = null;
     this.currentSystemMsgContent = '';
+    this.lastToolBlock = null;
     this.closeReasoning(); // Just in case
+    // Clear stashed diff when message is terminated
+    this.stashedDiff = null;
   }
 
   // Renders an inline confirmation card (tool_confirm) appended to the chat container.
-  // diff is optional — if present, it is rendered as a side-by-side diff2html block.
+  // The diff (if available) is rendered as a side-by-side diff2html block.
+  // 
+  // @param purpose - The purpose/description of the action being confirmed
+  // @param onChoice - Callback when user makes a choice (once, always, cancel)
+  // @param parentToolBlock - Optional: If provided, the confirm card is appended inside this tool block
   public addConfirmCard(
     purpose: string,
-    diff: { before: string; after: string } | null,
-    onChoice: (choice: 'once' | 'always' | 'cancel') => Promise<void>
+    onChoice: (choice: 'once' | 'always' | 'cancel') => Promise<void>,
+    parentToolBlock?: Element | null
   ) {
     this.removeLoadingBubble();
+
+    // Get the stashed diff (if any) - tools like edit_file and write_file send diff before confirm
+    const diff = this.stashedDiff;
+    this.stashedDiff = null;
+
+    // ── Resolve the tool-block we'll inject the card into ─────────────────────
+    // Priority: explicit parentToolBlock → last tool-block in currentMsgEl → outer container
+    let toolBlock: Element | null = parentToolBlock ?? null;
+    if (!toolBlock && this.currentMsgEl) {
+      const blocks = this.currentMsgEl.querySelectorAll('.tool-block');
+      if (blocks.length > 0) toolBlock = blocks[blocks.length - 1];
+    }
+
+    let targetContainer: HTMLElement = this.container;
+    if (toolBlock) {
+      const contentDiv = toolBlock.querySelector('.tool-content');
+      if (contentDiv) {
+        targetContainer = contentDiv as HTMLElement;
+        toolBlock.classList.add('open');
+      } else {
+        toolBlock = null; // can't inject — fall back to outer container
+      }
+    }
 
     const card = document.createElement('div');
     card.className = 'interaction-card confirm-card';
 
-    // Purpose row
+    // 1. Purpose row
     const purposeEl = document.createElement('div');
     purposeEl.className = 'interaction-card-purpose';
     purposeEl.textContent = purpose;
     card.appendChild(purposeEl);
 
-    // Action buttons
+    // 2. Optional diff viewer - appended directly, buttons come after
+    if (diff) {
+      try {
+        const patch = createPatch('changes', diff.before, diff.after, '', '', { context: 3 });
+        const diffHtml = d2h(patch, {
+          drawFileList: false,
+          matching: 'lines',
+          outputFormat: 'line-by-line',
+          renderNothingWhenEmpty: false,
+        });
+        const diffEl = document.createElement('div');
+        diffEl.className = 'interaction-card-diff';
+        diffEl.innerHTML = diffHtml;
+        card.appendChild(diffEl);
+      } catch (e) {
+        console.error('Failed to render diff:', e);
+      }
+    }
+
+    // 3. Action buttons
     const buttonsEl = document.createElement('div');
     buttonsEl.className = 'interaction-card-actions';
 
-    // Optional diff viewer
-    if (diff) {
-      const patch = createPatch('changes', diff.before, diff.after, '', '', { context: 3 });
-      const diffHtml = d2h(patch, {
-        drawFileList: false,
-        matching: 'lines',
-        outputFormat: 'side-by-side',
-        renderNothingWhenEmpty: false
-      });
-      const diffEl = document.createElement('div');
-      diffEl.className = 'interaction-card-diff';
-      diffEl.innerHTML = diffHtml;
-      card.insertBefore(diffEl, buttonsEl);
-      this.scrollToBottom();
-    }
-
-    let parentToolBlock: Element | null = null;
-
-    const disable = (statusText: string) => {
+    const resolve = (statusText: string) => {
       buttonsEl.remove();
       card.classList.add('resolved');
-      
       const label = document.createElement('div');
       label.className = 'interaction-card-actions';
       label.style.fontStyle = 'italic';
@@ -330,49 +369,31 @@ export class ChatRenderer {
       label.style.fontSize = '0.9rem';
       label.textContent = `Result: ${statusText}`;
       card.appendChild(label);
-
-      // Auto fold the tool block upon resolution
-      if (parentToolBlock) {
-        parentToolBlock.classList.remove('open');
-      }
+      if (toolBlock) setTimeout(() => toolBlock!.classList.remove('open'), 400);
     };
 
     const denyBtn = document.createElement('button');
     denyBtn.className = 'interaction-btn danger';
     denyBtn.textContent = 'Deny';
-    denyBtn.onclick = async () => { disable('Denied'); await onChoice('cancel'); };
+    denyBtn.onclick = async () => { resolve('Denied'); await onChoice('cancel'); };
 
     const onceBtn = document.createElement('button');
     onceBtn.className = 'interaction-btn secondary';
     onceBtn.textContent = 'Allow Once';
-    onceBtn.onclick = async () => { disable('Allowed once'); await onChoice('once'); };
+    onceBtn.onclick = async () => { resolve('Allowed once'); await onChoice('once'); };
 
     const alwaysBtn = document.createElement('button');
     alwaysBtn.className = 'interaction-btn primary';
     alwaysBtn.textContent = 'Allow this session';
-    alwaysBtn.onclick = async () => { disable('Allowed exactly this session'); await onChoice('always'); };
+    alwaysBtn.onclick = async () => { resolve('Allowed for session'); await onChoice('always'); };
 
     buttonsEl.appendChild(denyBtn);
     buttonsEl.appendChild(onceBtn);
     buttonsEl.appendChild(alwaysBtn);
     card.appendChild(buttonsEl);
 
-    if (this.currentMsgEl) {
-      const toolBlocks = this.currentMsgEl.querySelectorAll('.tool-block');
-      if (toolBlocks.length > 0) {
-        const lastToolBlock = toolBlocks[toolBlocks.length - 1];
-        parentToolBlock = lastToolBlock;
-        const contentDiv = lastToolBlock.querySelector('.tool-content');
-        if (contentDiv) {
-          contentDiv.appendChild(card);
-          lastToolBlock.classList.add('open');
-          this.scrollToBottom();
-          return;
-        }
-      }
-    }
-    
-    this.container.appendChild(card);
+    // ── Inject and reveal ───────────────────────────────────────────────────
+    targetContainer.appendChild(card);
     this.scrollToBottom();
   }
 
@@ -400,53 +421,35 @@ export class ChatRenderer {
     const actions = document.createElement('div');
     actions.className = 'interaction-card-actions';
 
-    let parentToolBlock: Element | null = null;
-    
-    const disable = (isCancel: boolean) => {
-      const val = textarea.value.trim();
-      if (!isCancel && val) {
-        this.addUserMessage(val);
-      } else if (isCancel) {
-        this.addUserMessage("[User canceled input]");
-      }
-      
-      card.remove();
-
-      // Auto fold the tool block upon resolution
-      if (parentToolBlock) {
-        parentToolBlock.classList.remove('open');
-      }
-    };
-
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'interaction-btn secondary';
     cancelBtn.textContent = 'Cancel';
-    cancelBtn.onclick = async () => { disable(true); await onSubmit('', true); };
+    cancelBtn.onclick = async () => { 
+      const val = textarea.value.trim();
+      if (val) {
+        this.addUserMessage(val);
+      } else {
+        this.addUserMessage("[User canceled input]");
+      }
+      card.remove();
+      await onSubmit('', true); 
+    };
 
     const submitBtn = document.createElement('button');
     submitBtn.className = 'interaction-btn primary';
     submitBtn.textContent = 'Submit';
-    submitBtn.onclick = async () => { disable(false); await onSubmit(textarea.value, false); };
+    submitBtn.onclick = async () => { 
+      const val = textarea.value.trim();
+      if (val) {
+        this.addUserMessage(val);
+      }
+      card.remove();
+      await onSubmit(textarea.value, false); 
+    };
 
     actions.appendChild(cancelBtn);
     actions.appendChild(submitBtn);
     card.appendChild(actions);
-
-    if (this.currentMsgEl) {
-      const toolBlocks = this.currentMsgEl.querySelectorAll('.tool-block');
-      if (toolBlocks.length > 0) {
-        const lastToolBlock = toolBlocks[toolBlocks.length - 1];
-        parentToolBlock = lastToolBlock;
-        const contentDiv = lastToolBlock.querySelector('.tool-content');
-        if (contentDiv) {
-          contentDiv.appendChild(card);
-          lastToolBlock.classList.add('open');
-          textarea.focus();
-          this.scrollToBottom();
-          return;
-        }
-      }
-    }
 
     this.container.appendChild(card);
     textarea.focus();

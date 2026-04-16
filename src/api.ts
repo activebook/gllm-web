@@ -9,7 +9,7 @@ export interface FetchCompletionParams {
   onTextChunk?: (chunk: string) => void;
   onReasoningChunk?: (chunk: string) => void;
   onStatus?: (status: string) => void;
-  onToolCall?: (functionName: string, args: any) => void;
+  onToolCall?: (functionName: string, description: string) => void;
   onCommand?: (output: string, error?: string) => void;
   onRequest?: (id: string, kind: string, purpose: string, tool?: string) => void;
   onDiff?: (before: string, after: string) => void;
@@ -86,7 +86,7 @@ export async function fetchSSECompletion(params: FetchCompletionParams) {
                 params.onStatus?.(data.content);
                 break;
               case 'tool_call':
-                params.onToolCall?.(data.content.function, data.content.args);
+                params.onToolCall?.(data.content.function, data.content.description);
                 break;
               case 'command':
                 params.onCommand?.(data.content, data.error);

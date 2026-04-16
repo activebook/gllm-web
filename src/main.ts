@@ -18,7 +18,8 @@ let isStreaming = false;
 let currentAbortController: AbortController | null = null;
 let currentSession = 'testbed-session';
 
-let stashedDiff: { before: string, after: string } | null = null;
+// Track the last tool block for diff confirmation
+let lastToolBlockForConfirm: Element | null = null;
 
 
 // Auto-resize textarea
@@ -85,6 +86,9 @@ function unlockInput() {
   chatRenderer.removeLoadingBubble();
   // Terminate current active message bounds
   chatRenderer.terminateCurrentMessage();
+  
+  // Reset the tracked tool block
+  lastToolBlockForConfirm = null;
 }
 
 form.addEventListener('submit', async (e) => {
@@ -116,6 +120,7 @@ form.addEventListener('submit', async (e) => {
     abortSignal: currentAbortController.signal,
 
     onStatus: (status) => {
+      console.log('[SSE] status:', status);
       setStatus(status);
       if (status === 'start_reasoning') {
         chatRenderer.openReasoning();
@@ -133,12 +138,18 @@ form.addEventListener('submit', async (e) => {
     },
 
     onToolCall: (fnName, args) => {
+      console.log('[SSE] tool_call:', fnName, args);
       toolToast.classList.remove('hidden');
       toolStatusText.textContent = `Using ${fnName}...`;
-      chatRenderer.addToolBadge(fnName, args);
+      
+      // Track which tool block this is for potential confirmation
+      const toolBlock = chatRenderer.addToolBadge(fnName, args);
+      lastToolBlockForConfirm = toolBlock;
+      console.log('[DEBUG] toolBlock:', toolBlock, 'lastToolBlockForConfirm:', lastToolBlockForConfirm);
     },
 
     onCommand: (output, error) => {
+      console.log('[SSE] command:', { output: output?.slice(0, 100), error });
       if (error) {
         chatRenderer.addErrorResponse(error);
       } else {
@@ -147,30 +158,47 @@ form.addEventListener('submit', async (e) => {
     },
 
     onDiff: (before, after) => {
-      stashedDiff = { before, after };
+      console.log('[SSE] diff received:', { 
+        beforeLen: before?.length, 
+        afterLen: after?.length,
+        beforePreview: before?.slice(0, 100),
+        afterPreview: after?.slice(0, 100)
+      });
+      // Store diff for the next confirm request
+      chatRenderer.stashDiff(before, after);
+      console.log('[DEBUG] diff stashed, stashedDiff:', chatRenderer.getStashedDiff());
     },
 
     onRequest: (id, type, purpose) => {
-      const diff = stashedDiff;
-      stashedDiff = null;
-
+      console.log('[SSE] request:', { id, type, purpose });
+      
       if (type === 'ask_user') {
         chatRenderer.addAskUserCard(purpose, async (answer, cancelled) => {
           await resolveInteraction(id, type, cancelled ? { cancelled: true } : { answer });
         });
       } else if (type === 'tool_confirm') {
-        chatRenderer.addConfirmCard(purpose, diff, async (choice) => {
+        console.log('[DEBUG] before addConfirmCard - lastToolBlockForConfirm:', lastToolBlockForConfirm);
+        console.log('[DEBUG] before addConfirmCard - stashedDiff:', chatRenderer.getStashedDiff());
+        
+        // Pass the last tool block so confirm card goes inside it
+        chatRenderer.addConfirmCard(purpose, async (choice) => {
+          console.log('[DEBUG] user choice:', choice);
           await resolveInteraction(id, type, { approve: choice });
-        });
+        }, lastToolBlockForConfirm);
+        
+        // Clear the tracked tool block after use
+        lastToolBlockForConfirm = null;
       }
     },
 
     onError: (msg, code) => {
+      console.log('[SSE] error:', { msg, code });
       chatRenderer.addErrorResponse(msg, code);
       unlockInput();
     },
 
     onDone: () => {
+      console.log('[SSE] done');
       unlockInput();
     }
   });

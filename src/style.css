@@ -620,17 +620,140 @@ h1 {
 
 .interaction-card-diff {
   overflow-x: auto;
+  overflow-y: auto;
   border-bottom: 1px solid var(--border-color);
   max-height: 400px;
-  overflow-y: auto;
+  background: var(--bg-base);
+  padding: var(--spacing-sm);
 }
 
-/* diff2html dark-mode overrides */
-.d2h-wrapper { color: var(--text-primary); }
-.d2h-file-header { background-color: var(--bg-surface); border-color: var(--border-color); color: var(--text-primary); }
-.d2h-file-wrapper { border-color: var(--border-color); margin-bottom: 0; }
-.d2h-code-line { font-family: var(--font-mono); font-size: 0.85rem; }
-.d2h-code-line del, .d2h-code-line ins { text-decoration: none; }
+/* diff2html dark theme colors and layout fixes */
+.interaction-card-diff .d2h-wrapper {
+  color: var(--text-primary);
+  background: var(--bg-base);
+}
+
+.interaction-card-diff table.d2h-diff-table {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
+.interaction-card-diff .d2h-file-header {
+  background-color: var(--bg-surface) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-secondary) !important;
+  padding: 8px 12px !important;
+}
+
+.interaction-card-diff .d2h-file-name {
+  color: var(--text-primary) !important;
+  font-weight: 500;
+}
+
+.interaction-card-diff .d2h-tag {
+  background-color: var(--bg-surface-elevated) !important;
+  color: var(--text-secondary) !important;
+  border: 1px solid var(--border-color);
+}
+
+.interaction-card-diff .d2h-file-wrapper {
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md) !important;
+  margin-bottom: 0 !important;
+}
+
+/* Hunk Headers - reduce spacing */
+.interaction-card-diff .d2h-info {
+  background-color: var(--bg-surface-elevated) !important;
+  color: var(--accent-secondary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  text-align: center;
+  padding: 4px !important;
+  font-size: 0.75rem;
+}
+
+/* Fix line number positioning - convert from absolute to relative */
+.interaction-card-diff .d2h-code-linenumber {
+  background-color: var(--bg-surface) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--border-color) !important;
+  position: relative !important;
+  width: 45px !important;
+  min-width: 45px !important;
+  max-width: 45px !important;
+  padding: 0 6px !important;
+  text-align: right;
+  vertical-align: top;
+}
+
+/* Code lines - reduce spacing significantly */
+.interaction-card-diff .d2h-code-line,
+.interaction-card-diff .d2h-code-side-line {
+  padding: 0 8px !important;
+  line-height: 1.2 !important;
+  white-space: pre;
+}
+
+/* Reduce row height */
+.interaction-card-diff tr {
+  line-height: 1.2 !important;
+}
+
+.interaction-card-diff tbody tr td {
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+/* Inserted lines */
+.interaction-card-diff tr.d2h-insert {
+  background-color: hsla(142, 70%, 45%, 0.15) !important;
+}
+
+.interaction-card-diff tr.d2h-insert .d2h-code-line,
+.interaction-card-diff tr.d2h-insert .d2h-code-side-line {
+  color: hsl(142, 70%, 70%) !important;
+}
+
+/* Deleted lines */
+.interaction-card-diff tr.d2h-delete {
+  background-color: hsla(0, 84%, 60%, 0.15) !important;
+}
+
+.interaction-card-diff tr.d2h-delete .d2h-code-line,
+.interaction-card-diff tr.d2h-delete .d2h-code-side-line {
+  color: hsl(0, 84%, 75%) !important;
+}
+
+/* Character highlights */
+.interaction-card-diff ins,
+.interaction-card-diff .d2h-ins {
+  background-color: hsla(142, 70%, 45%, 0.3) !important;
+  color: hsl(142, 70%, 60%) !important;
+  text-decoration: none !important;
+}
+
+.interaction-card-diff del,
+.interaction-card-diff .d2h-del {
+  background-color: hsla(0, 84%, 60%, 0.3) !important;
+  color: hsl(0, 84%, 70%) !important;
+  text-decoration: none !important;
+}
+
+/* Empty placeholder */
+.interaction-card-diff .d2h-emptyplaceholder {
+  background-color: var(--bg-surface) !important;
+}
+
+/* Stats */
+.interaction-card-diff .d2h-stats {
+  color: var(--text-secondary) !important;
+}
+
+/* Code line prefix */
+.interaction-card-diff .d2h-code-line-prefix {
+  white-space: pre;
+}
 
 .interaction-card-input {
   width: 100%;
